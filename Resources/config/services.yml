@@ -1,0 +1,7 @@
+parameters:
+#    ns_deploy.example.class: NS\DeployBundle\Example
+
+services:
+#    ns_deploy.example:
+#        class: %ns_deploy.example.class%
+#        arguments: [@service_id, "plain_value", %parameter%]

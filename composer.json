@@ -1,0 +1,22 @@
+{
+	"name": "neosense/deploy-bundle",
+	"type": "symfony-bundle",
+	"description": "NS Engine deployment instrument",
+	"keywords": ["admin", "deploy", "tools"],
+	"homepage": "https://bitbucket.org/phpinfo/nsdeploybundle",
+	"license": "Proprietary",
+	"authors": [
+		{
+			"name": "Neosense"
+		}
+	],
+	"minimum-stability": "dev",
+	"require": {
+		"php": ">=5.3.2",
+		"symfony/framework-bundle": ">=2.1,<2.3-dev"
+	},
+	"autoload": {
+		"psr-0": { "NS\\DeployBundle": "" }
+	},
+	"target-dir": "NS/DeployBundle"
+}
