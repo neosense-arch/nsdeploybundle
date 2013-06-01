@@ -21,7 +21,7 @@ class BuildCommand extends ContainerAwareCommand
 		$this
 			->setName('deploy:build')
 			->setDescription('Builds zip archive to upload')
-			->addOption('vendors', null, InputOption::VALUE_OPTIONAL, 'Build with vendors')
+			->addOption('vendors', null, InputOption::VALUE_NONE, 'Build with vendors')
 		;
 	}
 
@@ -34,7 +34,7 @@ class BuildCommand extends ContainerAwareCommand
 	 */
 	protected function execute(InputInterface $input, OutputInterface $output)
 	{
-		$output->writeln("<info>Site deploy started</info>\n");
+		$output->writeln("<info>Site deploy started</info>");
 
 		/**
 		 * @var Kernel $kernel
@@ -56,7 +56,12 @@ class BuildCommand extends ContainerAwareCommand
 		$this->createDir($input, $output, $zipPath);
 		$output->writeln("Zip folder\n  <comment>{$zipPath}</comment>\n");
 
-		// copiing files
+		// clearing deploy dir
+		$output->writeln("Clearing zip folder...");
+		`rm -rf {$this->escapePath($zipPath)}/*`;
+		$output->writeln("  <info>ok</info>\n");
+
+		// copying files
 		$root = realpath($kernel->getRootDir() . '/..');
 		$output->writeln("Copiing files\n  from <comment>{$root}</comment>\n  to   <comment>{$tempPath}</comment>...");
 		`cp -r {$this->escapePath($root)}/* {$this->escapePath($tempPath)}`;
