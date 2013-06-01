@@ -63,7 +63,7 @@ class BuildCommand extends ContainerAwareCommand
 
 		// copying files
 		$root = realpath($kernel->getRootDir() . '/..');
-		$output->writeln("Copiing files\n  from <comment>{$root}</comment>\n  to   <comment>{$tempPath}</comment>...");
+		$output->writeln("Copying files\n  from <comment>{$root}</comment>\n  to   <comment>{$tempPath}</comment>...");
 		`cp -r {$this->escapePath($root)}/* {$this->escapePath($tempPath)}`;
 		$output->writeln("  <info>ok</info>\n");
 
