@@ -12,6 +12,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 use Symfony\Component\HttpKernel\Kernel;
+use Symfony\Component\Process\Process;
 
 /**
  * Class BuildCommand
@@ -40,6 +41,12 @@ class BuildCommand extends ContainerAwareCommand
 				null,
 				InputOption::VALUE_NONE,
 				'Skips web path'
+			)
+			->addOption(
+				'skip-dump',
+				null,
+				InputOption::VALUE_NONE,
+				'Skips SQL dumping feature'
 			)
 			->addOption(
 				'web-path',
@@ -101,6 +108,41 @@ class BuildCommand extends ContainerAwareCommand
 			throw new \Exception("Web path {$web} wasn't found. Try to use --web to set relative web path");
 		}
 		$output->writeln("Web path\n  <comment>{$root}/{$web}</comment>\n");
+
+		// dumping database
+		if (!$input->getOption('skip-dump')) {
+			$output->write("Dumping database...");
+
+			$user     = $this->getContainer()->getParameter('database_user');
+			$password = $this->getContainer()->getParameter('database_password');
+			$host     = $this->getContainer()->getParameter('database_host');
+			$name     = $this->getContainer()->getParameter('database_name');
+
+			$cmd = array(
+				'mysqldump',
+				"-u{$user}",
+			);
+
+			if ($password) {
+				$cmd[] = "-p{$password}";
+			}
+
+			if ($host) {
+				$cmd[] = "-h{$host}";
+			}
+
+			$cmd[] = $name;
+			$cmd[] = " > {$root}/dump.sql";
+
+			$process = new Process(implode(' ', $cmd));
+			$process->run();
+
+			if (!$process->isSuccessful()) {
+				throw new \Exception($process->getErrorOutput());
+			}
+
+			$output->writeln(" <info>ok</info>\n");
+		}
 
 		// skipping common dirs
 		$finder
