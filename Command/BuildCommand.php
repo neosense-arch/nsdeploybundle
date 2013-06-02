@@ -4,10 +4,13 @@ namespace NS\DeployBundle\Command;
 
 use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 
+use Symfony\Component\Console\Helper\ProgressHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Input\InputOption;
 
+use Symfony\Component\Finder\Finder;
+use Symfony\Component\Finder\SplFileInfo;
 use Symfony\Component\HttpKernel\Kernel;
 
 /**
@@ -26,7 +29,25 @@ class BuildCommand extends ContainerAwareCommand
 		$this
 			->setName('deploy:build')
 			->setDescription('Builds zip archive to upload')
-			->addOption('no-vendors', null, InputOption::VALUE_NONE, 'Skip vendors')
+			->addOption(
+				'skip-vendors',
+				null,
+				InputOption::VALUE_NONE,
+				'Skips vendors'
+			)
+			->addOption(
+				'skip-web',
+				null,
+				InputOption::VALUE_NONE,
+				'Skips web path'
+			)
+			->addOption(
+				'web-path',
+				'w',
+				InputOption::VALUE_OPTIONAL,
+				'Web path (relatively to site root)',
+				'web'
+			)
 		;
 	}
 
@@ -35,6 +56,7 @@ class BuildCommand extends ContainerAwareCommand
 	 *
 	 * @param InputInterface $input
 	 * @param OutputInterface $output
+	 * @throws \Exception
 	 * @return int|null|void
 	 */
 	protected function execute(InputInterface $input, OutputInterface $output)
@@ -51,68 +73,81 @@ class BuildCommand extends ContainerAwareCommand
 		// deploy name
 		$name = time() . str_pad(rand(0, 9999), 4, '0', \STR_PAD_LEFT);
 
-		// deploy temp path
-		$tmp = sys_get_temp_dir();//$kernel->getRootDir() . '/deploy/tmp';
-		$this->createDir($input, $output, $tmp);
-		$output->writeln("Temp root path\n  <comment>{$tmp}</comment>\n");
+		// finder
+		$root = realpath($kernel->getRootDir() . '/..');
+		$finder = Finder::create()
+			->in($root)
+			->ignoreDotFiles(true)
+			->ignoreVCS(true)
+		;
 
-		// removing old deployment
-		$output->writeln("Removing old deployment...");
-		exec(sprintf("rm -rf %s/*", $this->escapePath($tmp)));
-		$output->writeln("  <info>ok</info>\n");
+		// deploy path
+		$deploy = $kernel->getRootDir() . '/deploy';
+		$finder->exclude($deploy);
+		$this->createDir($input, $output, $deploy);
+		$output->writeln("Deploy folder\n  <comment>{$deploy}</comment>\n");
+
+		// clearing deploy dir
+		exec("rm -rf {$this->escapePath($deploy)}/*");
 
 		// deploy temp path
-		$tempPath = "{$tmp}/{$name}";
+		$tempPath = "{$deploy}/tmp/{$name}";
 		$this->createDir($input, $output, $tempPath);
 		$output->writeln("Temp folder\n  <comment>{$tempPath}</comment>\n");
 
-		// deploy zip path
-		$zipPath = $kernel->getRootDir() . '/deploy';
-		$this->createDir($input, $output, $zipPath);
-		$output->writeln("Zip folder\n  <comment>{$zipPath}</comment>\n");
+		// testing web path
+		$web = $input->getOption('web-path');
+		if (!file_exists($root . '/' . $web)) {
+			throw new \Exception("Web path {$web} wasn't found. Try to use --web to set relative web path");
+		}
+		$output->writeln("Web path\n  <comment>{$root}/{$web}</comment>\n");
 
-		// clearing deploy dir
-		$output->writeln("Clearing zip folder...");
-		exec("rm -rf {$this->escapePath($zipPath)}/*");
-		$output->writeln("  <info>ok</info>\n");
-
-		// copying files
-		$root = realpath($kernel->getRootDir() . '/..');
-		$output->writeln("Copying files\n  from <comment>{$root}</comment>\n  to   <comment>{$tempPath}</comment>...");
-		exec("cp -r {$this->escapePath($root)}/* {$this->escapePath($tempPath)}");
-		$output->writeln("  <info>ok</info>\n");
-
-		// removing .git's
-		$output->write("Removing <comment>.git</comment> subfolders...");
-		exec("rm -rf `find {$this->escapePath($tempPath)} -type d -name .git`");
-		$output->writeln(" <info>ok</info>");
-
-		// removing .DS_Store
-		$output->write("Removing <comment>.DS_Store</comment> subfolders...");
-		exec("rm -rf `find {$this->escapePath($tempPath)} -type d -name .DS_Store`");
-		$output->writeln(" <info>ok</info>");
-
-		// removing dirs
-		$this
-			->removeDir($input, $output, "{$tempPath}/.idea")
-			->removeDir($input, $output, "{$tempPath}/app/deploy")
-			->removeDir($input, $output, "{$tempPath}/app/cache")
-			->removeDir($input, $output, "{$tempPath}/app/config/parameters.yml")
-			->removeDir($input, $output, "{$tempPath}/public_html/uploads")
-			->removeDir($input, $output, "{$tempPath}/public_html/media")
+		// skipping common dirs
+		$finder
+			->notPath('app/cache')
+			->notPath('app/import')
+			->notPath("{$web}/media/cache")
+			->notName('parameters.yml')
 		;
 
 		// skipping vendors
-		if ($input->getOption('no-vendors')) {
-			$this->removeDir($input, $output, "{$tempPath}/vendor");
+		if ($input->getOption('skip-vendors')) {
+			$finder->notPath('vendor');
 		}
 
+		// skipping web
+		if ($input->getOption('skip-web')) {
+			$finder->notPath($input->getOption('web-path'));
+		}
+
+		// copying files
+		$output->writeln("Copying files\n  from <comment>{$root}</comment>\n  to   <comment>{$tempPath}</comment>...\n");
+
+		/** @var ProgressHelper $progress */
+		$progress = $this->getHelper('progress');
+		$progress->start($output, count($finder->files()));
+
+		/** @var SplFileInfo $file */
+		foreach ($finder->files() as $file) {
+			$source      = $file->getPathname();
+			$destination = $tempPath . '/' . $file->getRelativePathname();
+
+			$destinationPath = dirname($destination);
+			if (!file_exists($destinationPath)) {
+				mkdir(dirname($destination), 0777, true);
+			}
+
+			copy($source, $destination);
+			$progress->advance();
+		}
+		$output->writeln("\n");
+
 		// zipping
-		$output->write("Zipping to <comment>{$zipPath}/{$name}.zip</comment>...");
+		$output->write("Zipping to <comment>{$deploy}/{$name}.zip</comment>...");
 		$cwd = getcwd();
 		exec("cd {$this->escapePath($tempPath)}; zip -r {$name}.zip ./*; cd {$this->escapePath($cwd)};");
 
-		rename("{$tempPath}/{$name}.zip", "{$zipPath}/{$name}.zip");
+		rename("{$tempPath}/{$name}.zip", "{$deploy}/{$name}.zip");
 		$output->writeln(" <info>ok</info>");
 
 		// removing temp files
@@ -136,11 +171,17 @@ class BuildCommand extends ContainerAwareCommand
 	private function createDir(InputInterface $input, OutputInterface $output, $dir)
 	{
 		if (!is_dir($dir)) {
-			$output->write("Creating folder <comment>{$dir}</comment>... ");
+			if ($input->getOption('verbose')) {
+				$output->write("Creating folder <comment>{$dir}</comment>... ");
+			}
+
 			if (!@mkdir($dir, 0777, true)) {
 				throw new \Exception("Unable to create dir '{$dir}'");
 			}
-			$output->writeln("<info>ok</info>\n");
+
+			if ($input->getOption('verbose')) {
+				$output->writeln("<info>ok</info>\n");
+			}
 		}
 	}
 
