@@ -10,6 +10,11 @@ use Symfony\Component\Console\Input\InputOption;
 
 use Symfony\Component\HttpKernel\Kernel;
 
+/**
+ * Class BuildCommand
+ *
+ * @package NS\DeployBundle\Command
+ */
 class BuildCommand extends ContainerAwareCommand
 {
 	/**
@@ -21,7 +26,7 @@ class BuildCommand extends ContainerAwareCommand
 		$this
 			->setName('deploy:build')
 			->setDescription('Builds zip archive to upload')
-			->addOption('vendors', null, InputOption::VALUE_NONE, 'Build with vendors')
+			->addOption('no-vendors', null, InputOption::VALUE_NONE, 'Skip vendors')
 		;
 	}
 
@@ -47,7 +52,17 @@ class BuildCommand extends ContainerAwareCommand
 		$name = time() . str_pad(rand(0, 9999), 4, '0', \STR_PAD_LEFT);
 
 		// deploy temp path
-		$tempPath = sys_get_temp_dir() . "/NS/Deploy/{$name}.tmp";
+		$tmp = sys_get_temp_dir();//$kernel->getRootDir() . '/deploy/tmp';
+		$this->createDir($input, $output, $tmp);
+		$output->writeln("Temp root path\n  <comment>{$tmp}</comment>\n");
+
+		// removing old deployment
+		$output->writeln("Removing old deployment...");
+		exec(sprintf("rm -rf %s/*", $this->escapePath($tmp)));
+		$output->writeln("  <info>ok</info>\n");
+
+		// deploy temp path
+		$tempPath = "{$tmp}/{$name}";
 		$this->createDir($input, $output, $tempPath);
 		$output->writeln("Temp folder\n  <comment>{$tempPath}</comment>\n");
 
@@ -58,23 +73,23 @@ class BuildCommand extends ContainerAwareCommand
 
 		// clearing deploy dir
 		$output->writeln("Clearing zip folder...");
-		`rm -rf {$this->escapePath($zipPath)}/*`;
+		exec("rm -rf {$this->escapePath($zipPath)}/*");
 		$output->writeln("  <info>ok</info>\n");
 
 		// copying files
 		$root = realpath($kernel->getRootDir() . '/..');
 		$output->writeln("Copying files\n  from <comment>{$root}</comment>\n  to   <comment>{$tempPath}</comment>...");
-		`cp -r {$this->escapePath($root)}/* {$this->escapePath($tempPath)}`;
+		exec("cp -r {$this->escapePath($root)}/* {$this->escapePath($tempPath)}");
 		$output->writeln("  <info>ok</info>\n");
 
 		// removing .git's
 		$output->write("Removing <comment>.git</comment> subfolders...");
-		`rm -rf \`find {$this->escapePath($tempPath)} -type d -name .git\``;
+		exec("rm -rf `find {$this->escapePath($tempPath)} -type d -name .git`");
 		$output->writeln(" <info>ok</info>");
 
 		// removing .DS_Store
 		$output->write("Removing <comment>.DS_Store</comment> subfolders...");
-		`rm -rf \`find {$this->escapePath($tempPath)} -type d -name .DS_Store\``;
+		exec("rm -rf `find {$this->escapePath($tempPath)} -type d -name .DS_Store`");
 		$output->writeln(" <info>ok</info>");
 
 		// removing dirs
@@ -87,22 +102,22 @@ class BuildCommand extends ContainerAwareCommand
 			->removeDir($input, $output, "{$tempPath}/public_html/media")
 		;
 
-		// vendors
-		if ($this->skipVendorsDir($input)) {
+		// skipping vendors
+		if ($input->getOption('no-vendors')) {
 			$this->removeDir($input, $output, "{$tempPath}/vendor");
 		}
 
 		// zipping
 		$output->write("Zipping to <comment>{$zipPath}/{$name}.zip</comment>...");
 		$cwd = getcwd();
-		`cd {$this->escapePath($tempPath)}; zip -r {$name}.zip ./*; cd {$this->escapePath($cwd)};`;
+		exec("cd {$this->escapePath($tempPath)}; zip -r {$name}.zip ./*; cd {$this->escapePath($cwd)};");
 
 		rename("{$tempPath}/{$name}.zip", "{$zipPath}/{$name}.zip");
 		$output->writeln(" <info>ok</info>");
 
 		// removing temp files
 		$output->write("Removing temp dir <comment>{$tempPath}</comment>...");
-		`rm -rf {$this->escapePath($tempPath)}`;
+		exec("rm -rf {$this->escapePath($tempPath)}");
 		$output->writeln(" <info>ok</info>");
 
 		// done
@@ -140,21 +155,10 @@ class BuildCommand extends ContainerAwareCommand
 	private function removeDir(InputInterface $input, OutputInterface $output, $dir)
 	{
 		$output->write("Removing <comment>{$dir}</comment> subfolder...");
-		`rm -rf {$this->escapePath($dir)}`;
+		exec("rm -rf {$this->escapePath($dir)}");
 		$output->writeln(" <info>ok</info>");
 
 		return $this;
-	}
-
-	/**
-	 * Checks to skip vendors
-	 *
-	 * @param InputInterface $input
-	 * @return bool
-	 */
-	private function skipVendorsDir(InputInterface $input)
-	{
-		return !$input->getOption('vendors');
 	}
 
 	/**
