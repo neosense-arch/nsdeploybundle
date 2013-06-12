@@ -43,6 +43,12 @@ class BuildCommand extends ContainerAwareCommand
 				'Skips web path'
 			)
 			->addOption(
+				'skip-upload',
+				null,
+				InputOption::VALUE_NONE,
+				'Skips uploaded user files'
+			)
+			->addOption(
 				'skip-dump',
 				null,
 				InputOption::VALUE_NONE,
@@ -113,25 +119,25 @@ class BuildCommand extends ContainerAwareCommand
 		if (!$input->getOption('skip-dump')) {
 			$output->write("Dumping database...");
 
-			$user     = $this->getContainer()->getParameter('database_user');
-			$password = $this->getContainer()->getParameter('database_password');
-			$host     = $this->getContainer()->getParameter('database_host');
-			$name     = $this->getContainer()->getParameter('database_name');
+			$dbUser     = $this->getContainer()->getParameter('database_user');
+			$dbPassword = $this->getContainer()->getParameter('database_password');
+			$dbHost     = $this->getContainer()->getParameter('database_host');
+			$dbName     = $this->getContainer()->getParameter('database_name');
 
 			$cmd = array(
 				'mysqldump',
-				"-u{$user}",
+				"-u{$dbUser}",
 			);
 
-			if ($password) {
-				$cmd[] = "-p{$password}";
+			if ($dbPassword) {
+				$cmd[] = "-p{$dbPassword}";
 			}
 
-			if ($host) {
-				$cmd[] = "-h{$host}";
+			if ($dbHost) {
+				$cmd[] = "-h{$dbHost}";
 			}
 
-			$cmd[] = $name;
+			$cmd[] = $dbName;
 			$cmd[] = " > {$root}/dump.sql";
 
 			$process = new Process(implode(' ', $cmd));
@@ -148,6 +154,7 @@ class BuildCommand extends ContainerAwareCommand
 		$finder
 			->notPath('app/cache')
 			->notPath('app/import')
+			->notPath('app/deploy')
 			->notPath("{$web}/media/cache")
 			->notName('parameters.yml')
 		;
@@ -160,6 +167,11 @@ class BuildCommand extends ContainerAwareCommand
 		// skipping web
 		if ($input->getOption('skip-web')) {
 			$finder->notPath($input->getOption('web-path'));
+		}
+
+		// skipping uploaded files
+		if ($input->getOption('skip-upload')) {
+			$finder->notPath("{$web}/upload");
 		}
 
 		// copying files
