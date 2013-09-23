@@ -199,7 +199,7 @@ class BuildCommand extends ContainerAwareCommand
 		// zipping
 		$output->write("Zipping to <comment>{$deploy}/{$name}.zip</comment>...");
 		$cwd = getcwd();
-		exec("cd {$this->escapePath($tempPath)}; zip -r {$name}.zip ./*; cd {$this->escapePath($cwd)};");
+		exec("cd {$this->escapePath($tempPath)}; zip --symlinks -r {$name}.zip ./*; cd {$this->escapePath($cwd)};");
 
 		rename("{$tempPath}/{$name}.zip", "{$deploy}/{$name}.zip");
 		$output->writeln(" <info>ok</info>");
