@@ -1,0 +1,33 @@
+{% extends 'NSAdminBundle:Layout:col1.html.twig' %}
+
+{% block content_header %}
+    <h3>Резервные копии</h3>
+{% endblock %}
+
+{% block content_content %}
+    <form method="post" {{ form_enctype(form) }} autocomplete="off">
+        <div class="btn-group" style="margin-bottom: 10px;" id="backupPresets">
+            <a href="#" class="btn" data-flags="dump,app,parameters,src,vendor,web,upload">Полный</a>
+            <a href="#" class="btn" data-flags="web">Обновление стилей</a>
+            <a href="#" class="btn" data-flags="app,src,web">Обновление сайта</a>
+            <a href="#" class="btn" data-flags="app,src,vendor,web">Обновление движка</a>
+        </div>
+
+        {{ form_widget(form) }}
+        <hr>
+        <button class="btn btn-success">Сохранить</button>
+    </form>
+
+    <script>
+        (function($){
+            $('#backupPresets').find('a').click(function(){
+                $(this).parents('form').find('input[type=checkbox]').prop('checked', false);
+                var flags = $(this).attr('data-flags').split(',');
+                $.each(flags, function(idx, flag){
+                    $('#form_' + flag).prop('checked', true);
+                });
+                return false;
+            });
+        })(jQuery);
+    </script>
+{% endblock %}

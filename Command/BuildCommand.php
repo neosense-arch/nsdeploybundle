@@ -155,6 +155,7 @@ class BuildCommand extends ContainerAwareCommand
 			->notPath('app/cache')
 			->notPath('app/import')
 			->notPath('app/deploy')
+			->notPath('app/backup')
 			->notPath("{$web}/media/cache")
 			->notName('parameters.yml')
 		;

@@ -1,0 +1,5 @@
+-
+    label: 'Резервные копии'
+    name: 'ns_deploy_backup'
+    parent: 'settings'
+    action: 'backups:index'

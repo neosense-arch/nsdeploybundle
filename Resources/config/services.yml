@@ -2,6 +2,15 @@ parameters:
 #    ns_deploy.example.class: NS\DeployBundle\Example
 
 services:
-#    ns_deploy.example:
-#        class: %ns_deploy.example.class%
-#        arguments: [@service_id, "plain_value", %parameter%]
+    ns_deploy.service.backup:
+        class: 'NS\DeployBundle\Service\BackupService'
+        arguments:
+            - %kernel.root_dir%
+            - %kernel.environment%
+            -
+                database_driver: %database_driver%
+                database_host: %database_host%
+                database_port: %database_port%
+                database_name: %database_name%
+                database_user: %database_user%
+                database_password: %database_password%
