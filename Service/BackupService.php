@@ -157,7 +157,7 @@ class BackupService
             // clearing
             $this->exec("rm -f {$tarFileName}");
             $this->exec("rm -f {$dumpFileName}");
-            $this->exec("rm -f {$this->root}/cache/*");
+            $this->exec("rm -rf {$this->root}/cache/*");
 
         } catch(\Exception $e) {
             $this->exec("rm -f {$tarFileName}");

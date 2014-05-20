@@ -55,8 +55,15 @@ class AdminBackupsController extends Controller
         if (empty($backups[$_GET['id']])) {
             return $this->back();
         }
+        $url = $this->generateUrl(
+            'ns_admin_bundle', array(
+                'adminBundle'     => 'NSDeployBundle',
+                'adminController' => 'backups',
+                'adminAction'     => 'index',
+            )
+        );
         $backupService->restore($backups[$_GET['id']]->getPathname());
-        return $this->back();
+        return $this->redirect($url);
     }
 
     /**
