@@ -441,7 +441,7 @@ class BackupService
         if (!$quiet) {
             $this->logger->debug("Executing process", array($cmd));
         }
-        $process = new Process($cmd, $cwd);
+        $process = new Process($cmd, $cwd, null, null, 300);
         $process->run();
         if (!$process->isSuccessful()) {
             $this->logger->critical("Process failed", array('cmd' => $cmd, 'message' => $process->getErrorOutput()));
