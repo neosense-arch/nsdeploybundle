@@ -23,7 +23,7 @@
                 <tr>
                     <td><i class="icon-file"></i>&nbsp;{{ backup.filename }}</td>
                     <td>{{ backup.MTime|date('d.m.Y H:i:s') }}</td>
-                    <td style="text-align: right">{{ (backup.size/1024/1024)|number_format(1) }}&nbsp;Мб</td>
+                    <td style="text-align: right">{{ backup.size|ns_filesize }}</td>
                     <td></td>
                     <td style="text-align: right">
                         <div class="btn-group">

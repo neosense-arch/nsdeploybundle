@@ -20,6 +20,11 @@ class BackupService
     /**
      * @var string
      */
+    private $web;
+
+    /**
+     * @var string
+     */
     private $backupDir;
 
     /**
@@ -33,20 +38,22 @@ class BackupService
     private $dbConfig;
 
     /**
+     * @var string
+     */
+    private $dumpFileName;
+
+    /**
      * @param string $root
      * @param string $env
      * @param array  $dbConfig
      */
     public function __construct($root, $env, $dbConfig = array())
     {
-        $this->root      = $root;
-        $this->backupDir = $root . '/backup';
-        $this->dbConfig  = $dbConfig;
-
-        // latest backup log
-        $this->logger = new Logger('ns_backup');
-        $latestFileName = $root . '/logs/' . $env . '.ns.backup_latest.log';
-        $this->logger->pushHandler(new StreamHandler(fopen($latestFileName, 'w')));
+        $this->root         = $root;
+        $this->web          = $root . '/../..';
+        $this->backupDir    = $root . '/backup';
+        $this->dbConfig     = $dbConfig;
+        $this->dumpFileName = $root . '/../restore.sql';
     }
 
     /**
@@ -62,64 +69,94 @@ class BackupService
     public function create($dump = false, $app = false, $parameters = false, $src = false,
        $vendor = false, $web = false, $upload = false)
     {
+        // latest backup log
+        $this->logger = new Logger('ns_deploy_backup_last');
+        $this->logger->pushHandler(new StreamHandler(fopen($this->root . '/logs/ns_deploy_backup_last.log', 'w')));
+
         try {
+            // logger initialization
             $this->logger->info("Starting backup", func_get_args());
 
-            // removing temp dir
-            $this->logger->info("Trying to remove temp dir if exists", array($this->getTempDir()));
-            $this->removeDir($this->getTempDir());
-
             // initialization
-            $backup = new Backup();
-            $backup->setName($this->generateBackupName());
-            $backup->setDir($this->backupDir);
-            $this->logger->debug("Backup name", array($backup->getName()));
+            $name = $this->generateBackupName();
+            $this->logger->debug("Backup name", array($name));
             $this->logger->debug("Backup dir", array($this->backupDir));
 
-            // creating temp dir
-            $this->logger->info("Creating temp dir", array($this->getTempDir()));
-            $this->createDir($this->getTempDir());
+            // creating backup dir
+            if (!is_dir($this->backupDir) && !@mkdir($this->backupDir, 0777, true)) {
+                throw new \Exception("Unable to create dir '{$this->backupDir}'");
+            }
+
+            // include/exclude instructions
+            $include = array('.');
+            $exclude = array(
+                '.git',
+                '.DS_Store',
+                './composer.json',
+                './composer.lock',
+            );
 
             // creating dump
+            @unlink($this->dumpFileName);
             if ($dump) {
-                $this->createDump();
+                $this->createDump($this->dumpFileName);
             }
 
             // app
             if ($app) {
-                $this->addApp($parameters);
+                $exclude[] = 'ns/app/backup';
+                $exclude[] = 'ns/app/cache';
+                $exclude[] = 'ns/app/deploy';
+                $exclude[] = 'ns/app/logs';
+                $exclude[] = 'ns/app/spool';
+                $exclude[] = 'ns/app/phpunit.xml.dist';
+                if (!$parameters) {
+                    $exclude[] = 'ns/app/config/parameters.yml';
+                }
+            }
+            else {
+                $exclude[] = 'ns/app';
             }
 
             // src
-            if ($src) {
-                $this->addSrc();
+            if (!$src) {
+                $exclude[] = 'ns/src';
             }
 
             // vendor
-            if ($vendor) {
-                $this->addVendor();
+            if (!$vendor) {
+                $exclude[] = 'ns/vendor';
             }
 
             // web
-            if ($web) {
-                $this->addWeb($upload);
+            if (!$web) {
+                $exclude[] = 'bundles';
+                $exclude[] = 'upload';
             }
+
+            // upload
+            if (!$upload) {
+                $exclude[] = 'upload';
+            }
+
+            $strInclude = join(' ', $include);
+            $strExclude = $exclude ? ('--exclude="' . join('" --exclude="', $exclude) . '"') : '';
 
             // archiving
             $this->logger->info("Creating archive file");
-            $cmd = "tar -czhf ../{$backup->getName()}.tar.gz *";
-            $this->exec($cmd, false, $this->getTempDir());
 
-            // removing temp dir
-            $this->logger->info("Removing temp dir", array($this->getTempDir()));
-            $this->removeDir($this->getTempDir());
+            // executing
+            $cmd = "tar {$strExclude} -czhvf {$this->backupDir}/{$name}.tar.gz {$strInclude}";
+            $this->exec($cmd, false, $this->web);
+
+            // removing sql dump file
+            @unlink($this->dumpFileName);
 
             $this->logger->info("Done");
 
         } catch(\Exception $e) {
-            // removing temp dir
-            $this->logger->info("Removing temp dir", array($this->getTempDir()));
-            $this->removeDir($this->getTempDir());
+            // removing sql dump file
+            @unlink($this->dumpFileName);
 
             $this->logger->critical("Exception occurred", array('message' => $e->getMessage()));
             throw $e;
@@ -132,8 +169,11 @@ class BackupService
      */
     public function restore($fileName)
     {
-        $tarFileName  = $this->root . '/../' . basename($fileName);
-        $dumpFileName = $this->root . '/../dump.sql';
+        // latest backup log
+        $this->logger = new Logger('ns_deploy_restore_last');
+        $this->logger->pushHandler(new StreamHandler(fopen($this->root . '/logs/ns_deploy_restore_last.log', 'w')));
+
+        $tarFileName  = $this->web . '/' . basename($fileName);
 
         try {
             if (!file_exists($fileName)) {
@@ -150,18 +190,18 @@ class BackupService
             $this->exec("tar -xzvf {$this->escapePath($tarFileName)}");
 
             // dump
-            if (file_exists($dumpFileName)) {
-                $this->restoreDump($dumpFileName);
+            if (file_exists($this->dumpFileName)) {
+                $this->restoreDump($this->dumpFileName);
             }
 
             // clearing
-            $this->exec("rm -f {$tarFileName}");
-            $this->exec("rm -f {$dumpFileName}");
+            @unlink($this->dumpFileName);
+            @unlink($tarFileName);
             $this->exec("rm -rf {$this->root}/cache/*");
 
         } catch(\Exception $e) {
-            $this->exec("rm -f {$tarFileName}");
-            $this->exec("rm -f {$dumpFileName}");
+            @unlink($this->dumpFileName);
+            @unlink($tarFileName);
             throw $e;
         }
     }
@@ -200,49 +240,9 @@ class BackupService
     /**
      * @return string
      */
-    private function getTempDir()
-    {
-        return $this->backupDir . '/.tmp';
-    }
-
-    /**
-     * @return string
-     */
     private function generateBackupName()
     {
         return date('Y-m-d_H-i-s_') . str_pad('0', 4, rand(0, 9999));
-    }
-
-    /**
-     * @param string $dir
-     * @throws \Exception
-     */
-    private function createDir($dir)
-    {
-        $this->logger->debug("Creating dir", array($dir));
-        if (!is_dir($dir) && !@mkdir($dir, 0777, true)) {
-            throw new \Exception("Unable to create dir '{$dir}'");
-        }
-    }
-
-    /**
-     * Removes $dir subdir
-     *
-     * @param string $dir
-     */
-    private function removeDir($dir)
-    {
-        $this->logger->debug("Removing dir", array($dir));
-        $this->exec("rm -rf {$this->escapePath($dir)}");
-    }
-
-    /**
-     * @param $source
-     * @param $dest
-     */
-    private function symlink($source, $dest)
-    {
-        $this->exec("ln -s {$this->escapePath($source)} {$this->escapePath($dest)}");
     }
 
     /**
@@ -259,10 +259,9 @@ class BackupService
     /**
      * @throws \Exception
      */
-    private function createDump()
+    private function createDump($fileName)
     {
-        $dumpFileName = $this->getTempDir() . '/dump.sql';
-        $this->logger->info("Creating SQL dump", array($dumpFileName));
+        $this->logger->info("Creating SQL dump", array($fileName));
         $this->logger->debug("Database credentials", $this->dbConfig);
 
         // checking MySQL
@@ -270,12 +269,12 @@ class BackupService
             throw new \Exception("This backup implementation supports only pdo_mysql database driver");
         }
 
-        $cmd = sprintf("mysqldump -u%s -p%s -h%s %s > %s",
+        $cmd = sprintf("mysqldump --opt -u%s -p%s -h%s %s > %s",
             $this->dbConfig['database_user'],
             $this->dbConfig['database_password'],
             $this->dbConfig['database_host'],
             $this->dbConfig['database_name'],
-            $this->escapePath($dumpFileName));
+            $this->escapePath($fileName));
         $this->exec($cmd);
     }
 
@@ -300,137 +299,6 @@ class BackupService
     }
 
     /**
-     * @param bool $parameters
-     */
-    private function addApp($parameters = true)
-    {
-        $source = $this->root;
-        $dest   = $this->getTempDir() . '/app';
-
-        $this->logger->info("Adding app dir", array('source' => $source, 'dest' => $dest));
-
-        // excluding parameters
-        $exclude = array('backup', 'cache', 'deploy', 'logs', 'spool');
-        if (!$parameters) {
-            $this->logger->info('Excluding parameters.yml');
-            $exclude[] = 'config';
-        }
-
-        // creating temp structure
-        $create  = array('cache', 'logs');
-        $this->symlinkDir($source, $dest, $exclude, $create);
-
-        // parameters
-        if (!$parameters) {
-            $this->logger->debug('Adding config files skipping parameters.yml');
-            $this->symlinkDir(
-                $source . '/config', $dest . '/config',
-                array(), array(),
-                array('parameters.yml')
-            );
-        }
-    }
-
-    private function addSrc()
-    {
-        $source = $this->root . '/../src';
-        $dest   = $this->getTempDir() . '/src';
-
-        $this->logger->info("Adding src dir", array('source' => $source, 'dest' => $dest));
-        $this->symlinkDir($source, $dest);
-    }
-
-    private function addVendor()
-    {
-        $source = $this->root . '/../vendor';
-        $dest   = $this->getTempDir() . '/vendor';
-
-        $this->logger->info("Adding vendor dir", array('source' => $source, 'dest' => $dest));
-        $this->symlinkDir($source, $dest);
-    }
-
-    private function addWeb($upload)
-    {
-        $source = $this->root . '/../web';
-        $dest   = $this->getTempDir() . '/web';
-
-        $this->logger->info("Adding web dir", array('source' => $source, 'dest' => $dest));
-
-        $exclude = array();
-        $create  = array();
-        if (!$upload) {
-            $this->logger->info("Skipping upload dir");
-            $exclude[] = 'upload';
-            $create[] = 'upload';
-            $create[] = 'upload/documents';
-            $create[] = 'upload/images';
-            $create[] = 'upload/j';
-            $create[] = 'upload/cache';
-        }
-
-        $this->symlinkDir($source, $dest, $exclude, $create);
-    }
-
-    /**
-     * @param       $from
-     * @param       $to
-     * @param array $exclude
-     * @param array $create
-     * @param array $notName
-     * @param bool  $precise
-     */
-    private function symlinkDir($from, $to, array $exclude = array(), array $create = array(), array $notName = array(), $precise = false)
-    {
-        $this->logger->debug('Symlinking structure', array('from' => $from, 'to' => $to));
-        $this->createDir($to);
-
-        // creating subdirs
-        $finder = Finder::create()
-            ->in($from)
-            ->ignoreVCS(true)
-            ->ignoreDotFiles(false)
-            ->notName('.DS_Store')
-            ->notName('._*')
-        ;
-
-        // skipping files
-        foreach ($notName as $name) {
-            $finder->notName($name);
-        }
-
-        // excluding
-        $this->logger->debug('Excluding dirs', $exclude);
-        $finder->exclude($exclude);
-
-        // iterator
-        if ($precise) {
-            /** @var SplFileInfo $file */
-            foreach ($finder->files() as $file) {
-                $this->createDir(dirname($to . '/' . $file->getRelativePathname()));
-                $this->symlink(
-                    $from . '/' . $file->getRelativePathname(),
-                    $to . '/' . $file->getRelativePathname()
-                );
-            }
-        }
-        else {
-            /** @var SplFileInfo $file */
-            foreach ($finder->depth(0) as $file) {
-                $this->symlink(
-                    $from . '/' . $file->getRelativePathname(),
-                    $to . '/' . $file->getRelativePathname()
-                );
-            }
-        }
-
-        // creating empty dirs
-        $this->logger->debug('Creating empty dirs', $create);
-        foreach ($create as $dir) {
-            $this->createDir($to . '/' . $dir);
-        }
-    }
-
-    /**
      * @param      $cmd
      * @param bool $quiet
      * @param null $cwd
@@ -441,7 +309,11 @@ class BackupService
         if (!$quiet) {
             $this->logger->debug("Executing process", array($cmd));
         }
-        $process = new Process($cmd, $cwd, null, null, 300);
+
+        // mac os x mysql path
+        $path = 'PATH=$PATH:/usr/local/mysql/bin';
+
+        $process = new Process("{$path} && {$cmd}", $cwd, null, null, 300);
         $process->run();
         if (!$process->isSuccessful()) {
             $this->logger->critical("Process failed", array('cmd' => $cmd, 'message' => $process->getErrorOutput()));
