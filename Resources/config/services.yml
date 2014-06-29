@@ -1,6 +1,3 @@
-parameters:
-#    ns_deploy.example.class: NS\DeployBundle\Example
-
 services:
     ns_deploy.service.backup:
         class: 'NS\DeployBundle\Service\BackupService'
@@ -14,3 +11,4 @@ services:
                 database_name: %database_name%
                 database_user: %database_user%
                 database_password: %database_password%
+            - %ns_core.install.restore.file%

@@ -40,20 +40,21 @@ class BackupService
     /**
      * @var string
      */
-    private $dumpFileName;
+    private $restoreFileName;
 
     /**
      * @param string $root
      * @param string $env
      * @param array  $dbConfig
+     * @param string $restoreFileName
      */
-    public function __construct($root, $env, $dbConfig = array())
+    public function __construct($root, $env, $dbConfig, $restoreFileName)
     {
-        $this->root         = $root;
-        $this->web          = $root . '/../..';
-        $this->backupDir    = $root . '/backup';
-        $this->dbConfig     = $dbConfig;
-        $this->dumpFileName = $root . '/../restore.sql';
+        $this->root            = $root;
+        $this->web             = $root . '/../..';
+        $this->backupDir       = $root . '/backup';
+        $this->dbConfig        = $dbConfig;
+        $this->restoreFileName = $restoreFileName;
     }
 
     /**
@@ -94,12 +95,13 @@ class BackupService
                 '.DS_Store',
                 './composer.json',
                 './composer.lock',
+                '.installed',
             );
 
             // creating dump
-            @unlink($this->dumpFileName);
+            @unlink($this->restoreFileName);
             if ($dump) {
-                $this->createDump($this->dumpFileName);
+                $this->createDump($this->restoreFileName);
             }
 
             // app
@@ -150,13 +152,13 @@ class BackupService
             $this->exec($cmd, false, $this->web);
 
             // removing sql dump file
-            @unlink($this->dumpFileName);
+            @unlink($this->restoreFileName);
 
             $this->logger->info("Done");
 
         } catch(\Exception $e) {
             // removing sql dump file
-            @unlink($this->dumpFileName);
+            @unlink($this->restoreFileName);
 
             $this->logger->critical("Exception occurred", array('message' => $e->getMessage()));
             throw $e;
@@ -190,17 +192,17 @@ class BackupService
             $this->exec("tar -xzvf {$this->escapePath($tarFileName)}");
 
             // dump
-            if (file_exists($this->dumpFileName)) {
-                $this->restoreDump($this->dumpFileName);
+            if (file_exists($this->restoreFileName)) {
+                $this->restoreDump($this->restoreFileName);
             }
 
             // clearing
-            @unlink($this->dumpFileName);
+            @unlink($this->restoreFileName);
             @unlink($tarFileName);
             $this->exec("rm -rf {$this->root}/cache/*");
 
         } catch(\Exception $e) {
-            @unlink($this->dumpFileName);
+            @unlink($this->restoreFileName);
             @unlink($tarFileName);
             throw $e;
         }
